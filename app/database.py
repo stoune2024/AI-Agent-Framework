@@ -1,9 +1,9 @@
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
-from settings.settings import get_settings
 from contextlib import asynccontextmanager
 
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+
+from settings.settings import get_settings
 
 settings = get_settings()
 

@@ -1,8 +1,6 @@
 from typing import Protocol, Self
 
-from app.clients.stream import StreamResult
-from app.models import ChatMessage
-from app.models import MessageRole, Conversation
+from app.models import ChatMessage, Conversation, MessageRole
 from app.schemas import MessageSchema
 
 

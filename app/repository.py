@@ -1,7 +1,8 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas import ConversationSchema, MessageSchema
 from sqlalchemy import select
-from app.models import MessageRole, Conversation, ChatMessage
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Conversation, MessageRole
+from app.schemas import ConversationSchema, MessageSchema
 
 
 class ConversationRepository:
