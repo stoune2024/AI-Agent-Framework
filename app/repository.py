@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Conversation, MessageRole
+from app.models import MessageRole
 from app.schemas import ConversationSchema, MessageSchema
 
 
@@ -9,7 +9,7 @@ class ConversationRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def create_conversation(self) -> Conversation:
+    async def create_conversation(self):
         conversation = ConversationSchema()
 
         self._session.add(conversation)
@@ -18,7 +18,7 @@ class ConversationRepository:
 
         return conversation
 
-    async def get_conversation(self, conversation_id: int) -> Conversation | None:
+    async def get_conversation(self, conversation_id: int):
         statement = select(ConversationSchema).where(
             ConversationSchema.id == conversation_id
         )

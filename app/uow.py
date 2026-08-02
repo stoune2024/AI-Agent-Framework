@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.protocols import UnitOfWorkProtocol
+from app.protocols.uow import UnitOfWorkProtocol
 from app.repository import ConversationRepository
 
 

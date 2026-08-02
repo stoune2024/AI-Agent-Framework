@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str
     LLM_MODEL: str
     OLLAMA_HOST: str
-    OPENAI_API_KEY: str
 
     @property
     def db_url(self) -> str:
