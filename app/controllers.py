@@ -1,20 +1,28 @@
 from fastapi import APIRouter, Depends
 
 from app.agents.service import AgentService
-from app.dependencies import get_agent_llm_service
+from app.dependencies import get_agent_service
 from app.models import ChatRequest, ChatResponse
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(
+    prefix="/agent",
+    tags=["Agent"],
+)
 
 
-@router.post("/", response_model=ChatResponse)
-async def chat(
+@router.post(
+    "/invoke",
+    response_model=ChatResponse,
+)
+async def invoke_agent(
     request: ChatRequest,
-    service: AgentService = Depends(get_agent_llm_service),
+    service: AgentService = Depends(get_agent_service),
 ) -> ChatResponse:
 
-    response = await service.invoke(request.message)
+    answer = await service.invoke(
+        request.message,
+    )
 
     return ChatResponse(
-        response=response,
+        response=answer,
     )

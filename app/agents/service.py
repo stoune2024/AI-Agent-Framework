@@ -1,17 +1,17 @@
-from langchain_core.messages import HumanMessage
-
-from app.protocols.llm import LLMClientProtocol
-
-
 class AgentService:
     def __init__(
         self,
-        llm: LLMClientProtocol,
+        executor,
     ):
-        self._llm = llm
+        self._executor = executor
 
-    async def invoke(self, message: str) -> str:
+    async def invoke(
+        self,
+        message: str,
+    ):
 
-        response = await self._llm.invoke([HumanMessage(content=message)])
+        response = await self._executor.invoke(message)
+
+        print(response.tool_calls)
 
         return response.content

@@ -7,8 +7,14 @@ class AgentResponse:
 
 
 @dataclass(slots=True)
-class ToolCall: ...
+class ToolCall:
+    name: str
+
+    arguments: dict
 
 
 @dataclass(slots=True)
-class ToolResult: ...
+class ToolResult:
+    name: str
+
+    result: str
