@@ -3,7 +3,6 @@ from langchain_ollama import ChatOllama
 
 
 class OllamaProvider:
-
     def __init__(
         self,
         host: str,

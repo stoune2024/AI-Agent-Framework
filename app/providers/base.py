@@ -4,6 +4,4 @@ from langchain_core.language_models import BaseChatModel
 
 
 class ModelProviderProtocol(Protocol):
-
-    def get_model(self) -> BaseChatModel:
-        ...
+    def get_model(self) -> BaseChatModel: ...

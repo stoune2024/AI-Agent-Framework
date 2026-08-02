@@ -3,7 +3,6 @@ from langchain_openai import ChatOpenAI
 
 
 class OpenAIProvider:
-
     def __init__(
         self,
         api_key: str,
