@@ -20,7 +20,11 @@ class ToolRegistry:
         name: str,
     ) -> BaseTool:
 
-        return self._tools[name]
+        try:
+            return self._tools[name]
+
+        except KeyError:
+            raise ValueError(f"Unknown tool: {name}")
 
     def exists(
         self,

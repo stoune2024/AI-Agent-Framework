@@ -1,17 +1,17 @@
+from app.agents.executor import AgentExecutor
+from app.agents.models import AgentResult
+
+
 class AgentService:
     def __init__(
         self,
-        executor,
+        executor: AgentExecutor,
     ):
         self._executor = executor
 
     async def invoke(
         self,
         message: str,
-    ):
+    ) -> AgentResult:
 
-        response = await self._executor.invoke(message)
-
-        print(response.tool_calls)
-
-        return response.content
+        return await self._executor.invoke(message)

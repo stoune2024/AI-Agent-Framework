@@ -19,10 +19,10 @@ async def invoke_agent(
     service: AgentService = Depends(get_agent_service),
 ) -> ChatResponse:
 
-    answer = await service.invoke(
+    result = await service.invoke(
         request.message,
     )
 
     return ChatResponse(
-        response=answer,
+        response=result.message.content,
     )
