@@ -2,12 +2,14 @@ from fastapi import Depends
 
 from app.agents.executor import AgentExecutor
 from app.agents.service import AgentService
+from app.database import get_session_factory
 from app.providers.base import ModelProviderProtocol
 from app.providers.ollama import OllamaProvider
 from app.providers.openai import OpenAIProvider
 from app.tools.calculator import calculator
 from app.tools.datetime import current_datetime
 from app.tools.registry import ToolRegistry
+from app.uow import UnitOfWorkFactory
 from settings.settings import get_settings
 
 
@@ -55,10 +57,19 @@ def get_agent_executor(
     )
 
 
+def get_uow_factory():
+
+    return UnitOfWorkFactory(
+        get_session_factory(),
+    )
+
+
 def get_agent_service(
-    executor: AgentExecutor = Depends(get_agent_executor),
-) -> AgentService:
+    executor=Depends(get_agent_executor),
+    uow=Depends(get_uow_factory),
+):
 
     return AgentService(
-        executor=executor,
+        executor,
+        uow,
     )

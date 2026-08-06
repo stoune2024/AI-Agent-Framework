@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
 
 from app.agents.service import AgentService
 from app.dependencies import get_agent_service
-from app.models import ChatRequest, ChatResponse
+from app.models import AgentChatRequest
 
 router = APIRouter(
     prefix="/agent",
@@ -10,19 +11,19 @@ router = APIRouter(
 )
 
 
-@router.post(
-    "/invoke",
-    response_model=ChatResponse,
-)
-async def invoke_agent(
-    request: ChatRequest,
+@router.post("/chat")
+async def chat(
+    request: AgentChatRequest,
     service: AgentService = Depends(get_agent_service),
-) -> ChatResponse:
+):
 
     result = await service.invoke(
-        request.message,
+        conversation_id=request.conversation_id,
+        message=request.message,
     )
 
-    return ChatResponse(
-        response=result.message.content,
+    return StreamingResponse(
+        result.stream,
+        media_type="text/plain",
+        headers={"X-Conversation-ID": str(result.conversation_id)},
     )

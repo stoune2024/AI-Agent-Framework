@@ -31,6 +31,10 @@ class UnitOfWork(UnitOfWorkProtocol):
         try:
             if exc_type:
                 await self.rollback()
+
+            else:
+                await self.commit()
+
         finally:
             await self._session.close()
 

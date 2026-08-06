@@ -1,14 +1,22 @@
 import time
+from collections.abc import AsyncIterator
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agents.models import AgentResult, AgentRunMetrics
 from app.agents.state import AgentState
+from app.models.agent import (
+    AgentExecution,
+    AgentFinalResult,
+    AgentRequest,
+    AgentRunMetrics,
+)
 from app.providers.base import ModelProviderProtocol
 from app.tools.registry import ToolRegistry
 
 
 class AgentExecutor:
+    MAX_ITERATIONS = 10
+
     def __init__(
         self,
         provider: ModelProviderProtocol,
@@ -16,32 +24,43 @@ class AgentExecutor:
     ):
         self._model = provider.get_model().bind_tools(registry.tools)
         self._registry = registry
-        self.MAX_ITERATIONS = 10
 
     async def invoke(
         self,
-        message: str,
-    ) -> AgentResult:
+        request: AgentRequest,
+    ) -> AgentExecution:
 
         started_at = time.perf_counter()
 
         state = AgentState()
-        state.messages.append(HumanMessage(content=message))
+        state.messages.extend(request.messages)
 
         while self._should_continue(state):
             response = await self._call_model(state)
+
             state.messages.append(response)
 
             if not response.tool_calls:
-                metrics = AgentRunMetrics(
-                    iterations=state.iterations,
-                    execution_time=time.perf_counter() - started_at,
-                    token_usage=None,  # добавим позже
-                )
+                final_message = response
 
-                return AgentResult(
-                    message=response,
-                    metrics=metrics,
+                async def stream() -> AsyncIterator[str]:
+
+                    yield final_message.content
+
+                async def get_result() -> AgentFinalResult:
+
+                    return AgentFinalResult(
+                        message=final_message,
+                        metrics=AgentRunMetrics(
+                            iterations=state.iterations,
+                            execution_time=time.perf_counter() - started_at,
+                            token_usage=None,
+                        ),
+                    )
+
+                return AgentExecution(
+                    stream=stream(),
+                    get_result=get_result,
                 )
 
             tool_messages = await self._execute_tools(response)
@@ -55,7 +74,7 @@ class AgentExecutor:
     async def _call_model(
         self,
         state: AgentState,
-    ):
+    ) -> AIMessage:
 
         return await self._model.ainvoke(state.messages)
 
