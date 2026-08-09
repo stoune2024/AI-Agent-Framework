@@ -1,8 +1,9 @@
+import asyncio
 import time
 from collections.abc import AsyncIterator
 
 import structlog
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 
 from app.agents.state import AgentState
 from app.exceptions import (
@@ -43,74 +44,155 @@ class AgentExecutor:
         state = AgentState()
         state.messages.extend(request.messages)
 
-        logger.info(
-            "agent.started",
-            message_count=len(state.messages),
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        result_future: asyncio.Future[AgentFinalResult] = (
+            asyncio.get_running_loop().create_future()
         )
 
-        while self._should_continue(state):
-            response = await self._call_model(state)
-
-            state.messages.append(response)
-
-            logger.info(
-                "agent.model_response",
-                iteration=state.iterations,
-                tool_calls=len(response.tool_calls),
-            )
-
-            if not response.tool_calls:
-                execution_time = time.perf_counter() - started_at
-
-                metrics = AgentRunMetrics(
-                    iterations=state.iterations,
-                    execution_time=execution_time,
-                    token_usage=None,
-                )
-
+        async def run() -> None:
+            try:
                 logger.info(
-                    "agent.completed",
+                    "agent.started",
+                    message_count=len(state.messages),
+                )
+
+                while self._should_continue(state):
+                    response = await self._stream_model(
+                        state,
+                        queue,
+                    )
+
+                    state.messages.append(response)
+
+                    logger.info(
+                        "agent.model_response",
+                        iteration=state.iterations,
+                        tool_calls=len(response.tool_calls),
+                    )
+
+                    if not response.tool_calls:
+                        execution_time = time.perf_counter() - started_at
+
+                        metrics = AgentRunMetrics(
+                            iterations=state.iterations,
+                            execution_time=execution_time,
+                            token_usage=None,
+                        )
+
+                        logger.info(
+                            "agent.completed",
+                            iterations=state.iterations,
+                            execution_time=execution_time,
+                        )
+
+                        result = AgentFinalResult(
+                            message=response,
+                            metrics=metrics,
+                        )
+
+                        if not result_future.done():
+                            result_future.set_result(result)
+
+                        return
+
+                    tool_messages = await self._execute_tools(response)
+
+                    state.messages.extend(tool_messages)
+
+                    state.iterations += 1
+
+                error = MaxIterationsExceededError("Maximum agent iterations exceeded.")
+
+                logger.error(
+                    "agent.max_iterations",
                     iterations=state.iterations,
-                    execution_time=execution_time,
                 )
 
-                final_message = response
+                if not result_future.done():
+                    result_future.set_exception(error)
 
-                async def stream() -> AsyncIterator[str]:
-
-                    content = final_message.content
-
-                    if isinstance(content, str):
-                        yield content
-
-                async def get_result() -> AgentFinalResult:
-
-                    return AgentFinalResult(message=final_message, metrics=metrics)
-
-                return AgentExecution(
-                    stream=stream(),
-                    get_result=get_result,
+            except Exception as exc:
+                logger.exception(
+                    "agent.failed",
                 )
 
-            tool_messages = await self._execute_tools(response)
+                if not result_future.done():
+                    result_future.set_exception(exc)
 
-            state.messages.extend(tool_messages)
+                raise
 
-            state.iterations += 1
+            finally:
+                await queue.put(None)
 
-        logger.error(
-            "agent.max_iterations",
-            iterations=state.iterations,
+        task = asyncio.create_task(run())
+
+        async def stream() -> AsyncIterator[str]:
+            try:
+                while True:
+                    token = await queue.get()
+
+                    if token is None:
+                        break
+
+                    yield token
+
+                await task
+
+            except asyncio.CancelledError:
+                task.cancel()
+                raise
+
+        async def get_result() -> AgentFinalResult:
+            return await result_future
+
+        return AgentExecution(
+            stream=stream(),
+            get_result=get_result,
         )
 
-        raise MaxIterationsExceededError("Maximum agent iterations exceeded.")
-
-    async def _call_model(
+    async def _stream_model(
         self,
         state: AgentState,
+        queue: asyncio.Queue[str | None],
     ) -> AIMessage:
 
-        return await self._model.ainvoke(state.messages)
+        message: AIMessageChunk | None = None
+
+        async for event in self._model.astream_events(
+            state.messages,
+            version="v2",
+        ):
+            event_name = event["event"]
+
+            if event_name != "on_chat_model_stream":
+                continue
+
+            chunk = event["data"]["chunk"]
+
+            if not isinstance(chunk, AIMessageChunk):
+                continue
+
+            if message is None:
+                message = chunk
+            else:
+                message = message + chunk
+
+            content = chunk.content
+
+            if isinstance(content, str) and content:
+                await queue.put(content)
+
+        if message is None:
+            raise RuntimeError("LLM returned no response.")
+
+        return AIMessage(
+            content=message.content,
+            additional_kwargs=message.additional_kwargs,
+            response_metadata=message.response_metadata,
+            tool_calls=message.tool_calls,
+            invalid_tool_calls=message.invalid_tool_calls,
+        )
 
     async def _execute_tools(
         self,
@@ -132,7 +214,7 @@ class AgentExecutor:
             )
 
             try:
-                tool = self._registry.get(call["name"])
+                tool = self._registry.get(tool_name)
 
             except ToolNotFoundError:
                 logger.error(
@@ -144,7 +226,7 @@ class AgentExecutor:
                 raise
 
             try:
-                result = await tool.ainvoke(call["args"])
+                result = await tool.ainvoke(arguments)
 
             except Exception as exc:
                 logger.exception(
@@ -167,7 +249,9 @@ class AgentExecutor:
 
             messages.append(
                 ToolMessage(
-                    tool_call_id=tool_call_id, content=str(result), name=tool_name
+                    tool_call_id=tool_call_id,
+                    content=str(result),
+                    name=tool_name,
                 )
             )
 
