@@ -50,9 +50,7 @@ class FakeModel:
                         tool_call_chunks=[
                             {
                                 "name": "calculator",
-                                "args": json.dumps(
-                                    {"expression": "24 * 16"}
-                                ),
+                                "args": json.dumps({"expression": "24 * 16"}),
                                 "id": "call-1",
                                 "index": 0,
                             }
@@ -116,13 +114,7 @@ async def test_executor_executes_tool_and_calls_model_again(
     calculator,
     model,
 ):
-    request = AgentRequest(
-        messages=[
-            HumanMessage(
-                content="Сколько будет 24 * 16?"
-            )
-        ]
-    )
+    request = AgentRequest(messages=[HumanMessage(content="Сколько будет 24 * 16?")])
 
     execution = await executor.invoke(request)
 
@@ -143,6 +135,4 @@ async def test_executor_executes_tool_and_calls_model_again(
 
     assert model.calls == 2
 
-    assert calculator.calls == [
-        {"expression": "24 * 16"}
-    ]
+    assert calculator.calls == [{"expression": "24 * 16"}]
