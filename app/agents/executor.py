@@ -1,9 +1,15 @@
 import time
 from collections.abc import AsyncIterator
 
+import structlog
 from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agents.state import AgentState
+from app.exceptions import (
+    MaxIterationsExceededError,
+    ToolExecutionError,
+    ToolNotFoundError,
+)
 from app.models.agent import (
     AgentExecution,
     AgentFinalResult,
@@ -12,6 +18,8 @@ from app.models.agent import (
 )
 from app.providers.base import ModelProviderProtocol
 from app.tools.registry import ToolRegistry
+
+logger = structlog.get_logger()
 
 
 class AgentExecutor:
@@ -35,28 +43,49 @@ class AgentExecutor:
         state = AgentState()
         state.messages.extend(request.messages)
 
+        logger.info(
+            "agent.started",
+            message_count=len(state.messages),
+        )
+
         while self._should_continue(state):
             response = await self._call_model(state)
 
             state.messages.append(response)
 
+            logger.info(
+                "agent.model_response",
+                iteration=state.iterations,
+                tool_calls=len(response.tool_calls),
+            )
+
             if not response.tool_calls:
                 final_message = response
 
+                execution_time = time.perf_counter() - started_at
+
+                metrics = AgentRunMetrics(
+                    iterations=state.iterations,
+                    execution_time=execution_time,
+                    token_usage=None,
+                )
+
+                logger.info(
+                    "agent.completed",
+                    iterations=state.iterations,
+                    execution_time=execution_time,
+                )
+
                 async def stream() -> AsyncIterator[str]:
 
-                    yield final_message.content
+                    content = final_message.content
+
+                    if isinstance(content, str):
+                        yield content
 
                 async def get_result() -> AgentFinalResult:
 
-                    return AgentFinalResult(
-                        message=final_message,
-                        metrics=AgentRunMetrics(
-                            iterations=state.iterations,
-                            execution_time=time.perf_counter() - started_at,
-                            token_usage=None,
-                        ),
-                    )
+                    return AgentFinalResult(message=final_message, metrics=metrics)
 
                 return AgentExecution(
                     stream=stream(),
@@ -69,7 +98,12 @@ class AgentExecutor:
 
             state.iterations += 1
 
-        raise RuntimeError("Maximum iterations exceeded.")
+        logger.error(
+            "agent.max_iterations",
+            iterations=state.iterations,
+        )
+
+        raise MaxIterationsExceededError("Maximum agent iterations exceeded.")
 
     async def _call_model(
         self,
@@ -83,17 +117,57 @@ class AgentExecutor:
         response: AIMessage,
     ) -> list[ToolMessage]:
 
-        messages = []
+        messages: list[ToolMessage] = []
 
         for call in response.tool_calls:
-            tool = self._registry.get(call["name"])
+            tool_name = call["name"]
+            arguments = call["args"]
+            tool_call_id = call["id"]
 
-            result = await tool.ainvoke(call["args"])
+            logger.info(
+                "tool.call",
+                tool=tool_name,
+                arguments=arguments,
+                tool_call_id=tool_call_id,
+            )
+
+            try:
+                tool = self._registry.get(call["name"])
+
+            except ToolNotFoundError:
+                logger.error(
+                    "tool.not_found",
+                    tool=tool_name,
+                    arguments=arguments,
+                    tool_call_id=tool_call_id,
+                )
+                raise
+
+            try:
+                result = await tool.ainvoke(call["args"])
+
+            except Exception as exc:
+                logger.exception(
+                    "tool.execution_failed",
+                    tool=tool_name,
+                    arguments=arguments,
+                    tool_call_id=tool_call_id,
+                )
+
+                raise ToolExecutionError(
+                    f"Tool '{tool_name}' execution failed."
+                ) from exc
+
+            logger.info(
+                "tool.result",
+                tool=tool_name,
+                result=str(result),
+                tool_call_id=tool_call_id,
+            )
 
             messages.append(
                 ToolMessage(
-                    tool_call_id=call["id"],
-                    content=str(result),
+                    tool_call_id=tool_call_id, content=str(result), name=tool_name
                 )
             )
 

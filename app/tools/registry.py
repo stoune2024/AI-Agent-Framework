@@ -1,5 +1,7 @@
 from langchain_core.tools import BaseTool
 
+from app.exceptions import ToolNotFoundError
+
 
 class ToolRegistry:
     def __init__(
@@ -23,8 +25,8 @@ class ToolRegistry:
         try:
             return self._tools[name]
 
-        except KeyError:
-            raise ValueError(f"Unknown tool: {name}")
+        except KeyError as exc:
+            raise ToolNotFoundError(f"Tool '{name}' not found.") from exc
 
     def exists(
         self,

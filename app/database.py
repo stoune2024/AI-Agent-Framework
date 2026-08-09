@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
+from app.logging import configure_logging
 from settings.settings import get_settings
 
 settings = get_settings()
@@ -30,7 +31,7 @@ async def create_database():
 @asynccontextmanager
 async def lifespan(app):
     await create_database()
-
+    configure_logging()
     yield
 
     await engine.dispose()

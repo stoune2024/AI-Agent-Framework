@@ -19,6 +19,11 @@ class AgentRunMetrics:
 
 @dataclass(slots=True)
 class AgentResult:
+    """
+    Результат работы AgentService.
+
+    """
+
     conversation_id: int
     stream: AsyncIterator[str]
 
@@ -35,7 +40,7 @@ class AgentRequest:
 @dataclass(slots=True)
 class AgentFinalResult:
     """
-    Результат выполнения AgentExecutor.
+    Финальный результат выполнения AgentExecutor.
     """
 
     message: AIMessage
@@ -44,6 +49,18 @@ class AgentFinalResult:
 
 @dataclass(slots=True)
 class AgentExecution:
+    """
+        Результат запуска AgentExecutor.
+
+    stream:
+        Поток ответа для HTTP-клиента.
+
+    get_result:
+        Получение финального результата и метрик
+        после завершения выполнения.
+
+    """
+
     stream: AsyncIterator[str]
 
     get_result: Callable[

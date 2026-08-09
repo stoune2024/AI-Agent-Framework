@@ -12,6 +12,7 @@ class UnitOfWork(UnitOfWorkProtocol):
         session_factory: async_sessionmaker[AsyncSession],
     ):
         self._session_factory = session_factory
+        self._session: AsyncSession | None = None
 
     async def __aenter__(self):
 
