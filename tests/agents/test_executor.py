@@ -10,7 +10,6 @@ from app.tools.registry import ToolRegistry
 
 
 class FakeProvider:
-
     def __init__(self, model):
         self._model = model
 
@@ -44,15 +43,12 @@ async def test_executor_returns_final_answer():
         messages=[],
     )
 
-    result = await executor.invoke(
-        request
-    )
+    result = await executor.invoke(request)
 
     final_result = await result.get_result()
 
     assert final_result.message.content == "Hello!"
     assert final_result.metrics.iterations == 0
-
 
     model.ainvoke.assert_awaited_once()
 
@@ -106,18 +102,12 @@ async def test_executor_executes_calculator():
         messages=[],
     )
 
-    result = await executor.invoke(
-        request
-    )
+    result = await executor.invoke(request)
 
     final_result = await result.get_result()
 
     assert final_result.message.content == "Результат: 425"
 
-    assert (
-        final_result.metrics.iterations == 1
-    )
+    assert final_result.metrics.iterations == 1
 
-    assert (
-        model.ainvoke.await_count == 2
-    )
+    assert model.ainvoke.await_count == 2

@@ -18,38 +18,26 @@ async def test_agent_service_creates_conversation():
 
     conversations = MagicMock()
 
-    conversations.create_conversation = AsyncMock(
-        return_value=conversation
-    )
+    conversations.create_conversation = AsyncMock(return_value=conversation)
 
     conversations.add_message = AsyncMock()
 
-    conversations.get_history = AsyncMock(
-        return_value=[]
-    )
+    conversations.get_history = AsyncMock(return_value=[])
 
     uow = MagicMock()
     uow.conversations = conversations
 
-    uow.__aenter__ = AsyncMock(
-        return_value=uow
-    )
+    uow.__aenter__ = AsyncMock(return_value=uow)
 
-    uow.__aexit__ = AsyncMock(
-        return_value=None
-    )
+    uow.__aexit__ = AsyncMock(return_value=None)
 
-    uow_factory = MagicMock(
-        return_value=uow
-    )
+    uow_factory = MagicMock(return_value=uow)
 
     executor = MagicMock()
 
     executor.invoke = AsyncMock(
         return_value=AgentFinalResult(
-            message=AIMessage(
-                content="425"
-            ),
+            message=AIMessage(content="425"),
             metrics=AgentRunMetrics(
                 iterations=1,
                 execution_time=0.1,

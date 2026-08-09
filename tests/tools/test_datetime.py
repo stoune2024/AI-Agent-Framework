@@ -14,6 +14,4 @@ async def test_datetime_tool():
 
     assert isinstance(result, str)
 
-    datetime.fromisoformat(
-        result
-    )
+    datetime.fromisoformat(result)

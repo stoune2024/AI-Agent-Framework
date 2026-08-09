@@ -60,8 +60,6 @@ class AgentExecutor:
             )
 
             if not response.tool_calls:
-                final_message = response
-
                 execution_time = time.perf_counter() - started_at
 
                 metrics = AgentRunMetrics(
@@ -75,6 +73,8 @@ class AgentExecutor:
                     iterations=state.iterations,
                     execution_time=execution_time,
                 )
+
+                final_message = response
 
                 async def stream() -> AsyncIterator[str]:
 

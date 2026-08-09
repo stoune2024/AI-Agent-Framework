@@ -22,7 +22,9 @@ class AgentService:
         conversation_id: int | None,
         message: str,
     ) -> AgentResult:
-
+        # ---------------------------------------------------------
+        # 1. Сохраняем пользовательское сообщение
+        # ---------------------------------------------------------
         async with self._uow_factory() as uow:
             if conversation_id is None:
                 conversation = await uow.conversations.create_conversation()
@@ -45,27 +47,36 @@ class AgentService:
             conversation_id=conversation_id,
             message_length=len(message),
         )
-
+        # ---------------------------------------------------------
+        # 2. Формируем AgentRequest
+        # ---------------------------------------------------------
         request = AgentRequest(
             messages=history,
         )
 
+        # ---------------------------------------------------------
+        # 3. Запускаем AgentExecutor
+        # ---------------------------------------------------------
+
         execution = await self._executor.invoke(request)
 
+        # ---------------------------------------------------------
+        # 4. Формируем HTTP stream
+        # ---------------------------------------------------------
         async def stream():
-
-            chunks: list[str] = []
 
             try:
                 async for token in execution.stream:
-                    chunks.append(token)
-
                     yield token
-
+                # -------------------------------------------------
+                # 5. Получаем финальный результат
+                # -------------------------------------------------
                 result = await execution.get_result()
 
                 usage = result.metrics.token_usage
-
+                # -------------------------------------------------
+                # 6. Сохраняем ответ ассистента
+                # -------------------------------------------------
                 async with self._uow_factory() as uow:
                     await uow.conversations.add_message(
                         conversation_id=conversation_id,
