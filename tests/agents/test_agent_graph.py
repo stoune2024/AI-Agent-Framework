@@ -3,7 +3,7 @@ import json
 import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
-from app.agents.executor import AgentExecutor
+from app.agents.agent_graph import AgentGraph
 from app.models.agent import AgentRequest
 
 
@@ -102,7 +102,7 @@ def model():
 def executor(model, calculator):
     registry = FakeRegistry(calculator)
 
-    return AgentExecutor(
+    return AgentGraph(
         provider=FakeProvider(model),
         registry=registry,
     )

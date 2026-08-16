@@ -1,7 +1,6 @@
 import structlog
 
 from app.models.agent import (
-    AgentRequest,
     AgentResult,
 )
 
@@ -11,10 +10,10 @@ logger = structlog.get_logger()
 class AgentService:
     def __init__(
         self,
-        executor,
+        graph,
         uow_factory,
     ):
-        self._executor = executor
+        self._graph = graph
         self._uow_factory = uow_factory
 
     async def invoke(
@@ -47,21 +46,15 @@ class AgentService:
             conversation_id=conversation_id,
             message_length=len(message),
         )
-        # ---------------------------------------------------------
-        # 2. Формируем AgentRequest
-        # ---------------------------------------------------------
-        request = AgentRequest(
-            messages=history,
-        )
 
         # ---------------------------------------------------------
-        # 3. Запускаем AgentExecutor
+        # 2. Запускаем AgentGraph
         # ---------------------------------------------------------
 
-        execution = await self._executor.invoke(request)
+        execution = await self._graph.invoke(history)
 
         # ---------------------------------------------------------
-        # 4. Формируем HTTP stream
+        # 3. Формируем HTTP stream
         # ---------------------------------------------------------
         async def stream():
 
@@ -69,13 +62,13 @@ class AgentService:
                 async for token in execution.stream:
                     yield token
                 # -------------------------------------------------
-                # 5. Получаем финальный результат
+                # 4. Получаем финальный результат
                 # -------------------------------------------------
                 result = await execution.get_result()
 
                 usage = result.metrics.token_usage
                 # -------------------------------------------------
-                # 6. Сохраняем ответ ассистента
+                # 5. Сохраняем ответ ассистента
                 # -------------------------------------------------
                 async with self._uow_factory() as uow:
                     await uow.conversations.add_message(

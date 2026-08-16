@@ -1,6 +1,6 @@
 from fastapi import Depends
 
-from app.agents.executor import AgentExecutor
+from app.agents.agent_graph import AgentGraph
 from app.agents.service import AgentService
 from app.database import get_session_factory
 from app.providers.base import ModelProviderProtocol
@@ -46,18 +46,18 @@ def get_tool_registry() -> ToolRegistry:
     )
 
 
-def get_agent_executor(
+def get_agent_graph(
     provider: ModelProviderProtocol = Depends(get_model_provider),
     registry: ToolRegistry = Depends(get_tool_registry),
-) -> AgentExecutor:
+) -> AgentGraph:
 
-    return AgentExecutor(
+    return AgentGraph(
         provider=provider,
         registry=registry,
     )
 
 
-def get_uow_factory():
+def get_uow_factory() -> UnitOfWorkFactory:
 
     return UnitOfWorkFactory(
         get_session_factory(),
@@ -65,11 +65,11 @@ def get_uow_factory():
 
 
 def get_agent_service(
-    executor=Depends(get_agent_executor),
-    uow=Depends(get_uow_factory),
-):
+    graph: AgentGraph = Depends(get_agent_graph),
+    uow_factory: UnitOfWorkFactory = Depends(get_uow_factory),
+) -> AgentService:
 
     return AgentService(
-        executor,
-        uow,
+        graph=graph,
+        uow_factory=uow_factory,
     )

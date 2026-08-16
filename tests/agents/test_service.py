@@ -47,7 +47,7 @@ async def test_agent_service_creates_conversation():
     )
 
     service = AgentService(
-        executor=executor,
+        graph=executor,
         uow_factory=uow_factory,
     )
 
