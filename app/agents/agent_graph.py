@@ -5,12 +5,14 @@ from collections.abc import AsyncIterator
 import structlog
 from langchain_core.messages import AIMessage, BaseMessage
 
+from app.agents.event_logger import AgentEventLogger
 from app.agents.graph_state import AgentGraphState
 from app.models.agent import (
     AgentExecution,
     AgentFinalResult,
     AgentRunMetrics,
 )
+from app.models.llm import TokenUsage
 from app.providers.base import ModelProviderProtocol
 from app.tools.registry import ToolRegistry
 
@@ -24,8 +26,10 @@ class AgentGraph:
         self,
         provider: ModelProviderProtocol,
         registry: ToolRegistry,
+        event_logger: AgentEventLogger | None = None,
     ):
         self._registry = registry
+        self._event_logger = event_logger or AgentEventLogger()
 
         self._model = provider.get_model().bind_tools(
             registry.tools,
@@ -82,6 +86,7 @@ class AgentGraph:
 
         return {
             "messages": [response],
+            "iterations": state["iterations"] + 1,
         }
 
     def _should_continue(
@@ -91,9 +96,16 @@ class AgentGraph:
 
         last_message = state["messages"][-1]
 
-        if isinstance(last_message, AIMessage):
-            if last_message.tool_calls:
-                return "tools"
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
+            if state["iterations"] >= self.MAX_ITERATIONS:
+                logger.warning(
+                    "agent.max_iterations",
+                    iterations=state["iterations"],
+                )
+
+                return "end"
+
+            return "tools"
 
         return "end"
 
@@ -106,28 +118,94 @@ class AgentGraph:
 
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-        result_future = asyncio.get_running_loop().create_future()
+        result_future: asyncio.Future[AgentFinalResult] = (
+            asyncio.get_running_loop().create_future()
+        )
 
         async def run() -> None:
 
+            token_usage = TokenUsage(
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+            )
+
             try:
-                result = await self._graph.ainvoke(
+                final_message: AIMessage | None = None
+                iterations = 0
+
+                async for event in self._graph.astream_events(
                     {
                         "messages": messages,
+                        "iterations": 0,
                     },
-                )
+                    version="v2",
+                ):
+                    await self._event_logger.handle(event)
 
-                final_message = result["messages"][-1]
+                    event_name = event.get("event")
 
-                if not isinstance(final_message, AIMessage):
-                    raise RuntimeError("Graph finished without AIMessage.")
+                    if event_name == "on_chat_model_stream":
+                        chunk = event["data"]["chunk"]
+
+                        content = chunk.content
+
+                        if isinstance(content, str) and content:
+                            await queue.put(content)
+
+                    elif event_name == "on_chat_model_end":
+                        usage = self._extract_token_usage(event)
+
+                        if usage is not None:
+                            token_usage.prompt_tokens += usage.prompt_tokens or 0
+
+                            token_usage.completion_tokens += (
+                                usage.completion_tokens or 0
+                            )
+
+                            token_usage.total_tokens += usage.total_tokens or 0
+
+                    elif event_name == "on_chain_end":
+                        output = event.get("data", {}).get("output")
+
+                        if not isinstance(output, dict):
+                            continue
+
+                        output_messages = output.get("messages")
+
+                        if output_messages:
+                            candidate = output_messages[-1]
+
+                            if isinstance(candidate, AIMessage):
+                                final_message = candidate
+
+                        output_iterations = output.get("iterations")
+
+                        if isinstance(output_iterations, int):
+                            iterations = output_iterations
+
+                if final_message is None:
+                    raise RuntimeError(
+                        "Graph finished without AIMessage.",
+                    )
 
                 execution_time = time.perf_counter() - started_at
 
                 metrics = AgentRunMetrics(
-                    iterations=0,
+                    iterations=iterations,
                     execution_time=execution_time,
-                    token_usage=None,
+                    token_usage=token_usage,
+                )
+
+                logger.info(
+                    "agent.completed",
+                    iterations=metrics.iterations,
+                    execution_time=metrics.execution_time,
+                    token_usage={
+                        "prompt_tokens": token_usage.prompt_tokens,
+                        "completion_tokens": token_usage.completion_tokens,
+                        "total_tokens": token_usage.total_tokens,
+                    },
                 )
 
                 final_result = AgentFinalResult(
@@ -136,14 +214,7 @@ class AgentGraph:
                 )
 
                 if not result_future.done():
-                    result_future.set_result(
-                        final_result,
-                    )
-
-                content = final_message.content
-
-                if isinstance(content, str):
-                    await queue.put(content)
+                    result_future.set_result(final_result)
 
             except Exception as exc:
                 logger.exception(
@@ -177,10 +248,34 @@ class AgentGraph:
                 raise
 
         async def get_result() -> AgentFinalResult:
-
             return await result_future
 
         return AgentExecution(
             stream=stream(),
             get_result=get_result,
+        )
+
+    @staticmethod
+    def _extract_token_usage(
+        event: dict,
+    ) -> TokenUsage | None:
+
+        output = event.get("data", {}).get("output")
+
+        if output is None:
+            return None
+
+        usage = getattr(
+            output,
+            "usage_metadata",
+            None,
+        )
+
+        if not usage:
+            return None
+
+        return TokenUsage(
+            prompt_tokens=usage.get("input_tokens"),
+            completion_tokens=usage.get("output_tokens"),
+            total_tokens=usage.get("total_tokens"),
         )
