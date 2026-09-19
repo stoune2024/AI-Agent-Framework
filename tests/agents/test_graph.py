@@ -11,6 +11,7 @@ from app.tools.registry import ToolRegistry
 class FakeModel:
     def __init__(self, responses: Sequence[AIMessage]):
         self._responses = iter(responses)
+        self.calls = 0
 
     def bind_tools(self, tools):
         return self
@@ -19,7 +20,13 @@ class FakeModel:
         self,
         messages: list[BaseMessage],
     ) -> AIMessage:
-        return next(self._responses)
+        self.calls += 1
+        try:
+            return next(self._responses)
+        except StopIteration as exc:
+            raise AssertionError(
+                "FakeModel was called more times than expected."
+            ) from exc
 
 
 class FakeProvider:
@@ -62,8 +69,11 @@ async def test_graph_returns_final_response(
         {
             "messages": [],
             "iterations": 0,
+            "tool_calls": 0,
+            "last_tool_result": None,
         },
     )
+    print(result)
 
     final_message = result["messages"][-1]
 
@@ -111,6 +121,8 @@ async def test_graph_executes_tool_and_calls_model_again(
         {
             "messages": [],
             "iterations": 0,
+            "tool_calls": 0,
+            "last_tool_result": None,
         },
     )
 
@@ -152,6 +164,8 @@ async def test_graph_routes_directly_to_end(
         {
             "messages": [],
             "iterations": 0,
+            "tool_calls": 0,
+            "last_tool_result": None,
         },
     )
 

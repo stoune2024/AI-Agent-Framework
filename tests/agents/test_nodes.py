@@ -1,9 +1,10 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agents.agent_graph import AgentGraph
+from app.agents.graph_state import AgentGraphState
 
 
 @pytest.mark.asyncio
@@ -62,6 +63,46 @@ async def test_call_model_increments_existing_iterations():
 
     assert result["messages"] == [response]
     assert result["iterations"] == 4
+
+
+@pytest.mark.asyncio
+async def test_update_tool_state():
+
+    graph = object.__new__(AgentGraph)
+
+    state: AgentGraphState = {
+        "messages": [
+            ToolMessage(
+                content="493",
+                tool_call_id="call-1",
+            )
+        ],
+        "iterations": 1,
+        "tool_calls": 0,
+        "last_tool_result": None,
+    }
+
+    result = await graph._update_tool_state(state)
+
+    assert result["tool_calls"] == 1
+    assert result["last_tool_result"] == "493"
+
+
+@pytest.mark.asyncio
+async def test_update_tool_state_ignores_non_tool_message():
+
+    graph = object.__new__(AgentGraph)
+
+    state: AgentGraphState = {
+        "messages": [HumanMessage(content="Hello")],
+        "iterations": 1,
+        "tool_calls": 0,
+        "last_tool_result": None,
+    }
+
+    result = await graph._update_tool_state(state)
+
+    assert result == {}
 
 
 def test_should_continue_when_ai_message_contains_tool_call():

@@ -3,7 +3,7 @@ import time
 from collections.abc import AsyncIterator
 
 import structlog
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
 from app.agents.event_logger import AgentEventLogger
 from app.agents.graph_state import AgentGraphState
@@ -54,6 +54,11 @@ class AgentGraph:
             ToolNode(self._registry.tools),
         )
 
+        graph.add_node(
+            "update_tool_state",
+            self._update_tool_state,
+        )
+
         graph.add_edge(
             START,
             "agent",
@@ -70,10 +75,32 @@ class AgentGraph:
 
         graph.add_edge(
             "tools",
+            "update_tool_state",
+        )
+
+        graph.add_edge(
+            "update_tool_state",
             "agent",
         )
 
         return graph.compile()
+
+    async def _update_tool_state(
+        self,
+        state: AgentGraphState,
+    ) -> dict:
+
+        last_message = state["messages"][-1]
+
+        if not isinstance(last_message, ToolMessage):
+            return {}
+
+        content = last_message.content
+
+        return {
+            "tool_calls": state["tool_calls"] + 1,
+            "last_tool_result": (content if isinstance(content, str) else str(content)),
+        }
 
     async def _call_model(
         self,
@@ -138,6 +165,8 @@ class AgentGraph:
                     {
                         "messages": messages,
                         "iterations": 0,
+                        "tool_calls": 0,
+                        "last_tool_result": None,
                     },
                     version="v2",
                 ):
